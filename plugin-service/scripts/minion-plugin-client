@@ -33,7 +33,7 @@ if __name__ == "__main__":
 
     r = requests.put("%s/session/create/%s" % (options.api,options.plugin), data=options.configuration)
     r.raise_for_status()
-    create_response = r.json
+    create_response = r.json()
     if not create_response['success']:
         print "Failed to create session: %s" % create_response['error']
         sys.exit(1)
@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     r = requests.put("%s/session/%s/state" % (options.api,session['id']), data="START")
     r.raise_for_status()
-    start_response = r.json
+    start_response = r.json()
     if not start_response['success']:
         print "Failed to start session: %s" % start_response['error']
         sys.exit(1)
@@ -56,8 +56,8 @@ if __name__ == "__main__":
 
         r = requests.get("%s/session/%s" % (options.api,session['id']))
         r.raise_for_status()
-        session_response = r.json
-        session_info = r.json['session']
+        session_response = r.json()
+        session_info = session_response['session']
         
         if moo:
             print ""
@@ -81,7 +81,7 @@ if __name__ == "__main__":
 
         r = requests.get("%s/session/%s/results" % (options.api,session['id']))
         r.raise_for_status()
-        results_response = r.json
+        results_response = r.json()
 
         print "\nPlugin session results:\n"
         print json.dumps(results_response['issues'], sort_keys=True, indent=4)
