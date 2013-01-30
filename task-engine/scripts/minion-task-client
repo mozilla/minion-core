@@ -30,14 +30,14 @@ if __name__ == "__main__":
    r = requests.put(task_engine_url + "/scan/create/" + plan_name, data=configuration)
    r.raise_for_status()
    #print "CREATE RESPONSE", r.text
-   create_response = r.json
+   create_response = r.json()
 
    if create_response['success']:
 
       url = task_engine_url + "/scan/" + create_response['scan']['id'] + "/state"
       r = requests.post(url, 'START')
       r.raise_for_status()
-      start_response = r.json
+      start_response = r.json()
 
       if start_response['success']:
 
@@ -46,7 +46,7 @@ if __name__ == "__main__":
             url = task_engine_url + "/scan/" + create_response['scan']['id']
             r = requests.get(url)
             r.raise_for_status()
-            scan_response = r.json
+            scan_response = r.json()
 
             for session in scan_response['scan']['sessions']:
                print "%s %-20s %s" % (session['id'], session['plugin']['name'], session['state'])
@@ -70,7 +70,7 @@ if __name__ == "__main__":
       url = task_engine_url + "/scan/" + create_response['scan']['id'] + "/results"
       r = requests.get(url)
       r.raise_for_status()
-      results_response = r.json
+      results_response = r.json()
 
       for session in results_response['scan']['sessions']:
          for issue in session['issues']:
