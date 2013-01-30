@@ -1,0 +1,3 @@
+[submodule "dependencies/klein"]
+	path = dependencies/klein
+	url = https://github.com/MostAwesomeDude/klein.git

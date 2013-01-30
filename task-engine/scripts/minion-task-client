@@ -1,0 +1,77 @@
+#!/usr/bin/env python
+
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+import json
+import optparse
+import sys
+import time
+
+import requests
+
+if __name__ == "__main__":
+
+   # minion-task-client -a task-engine-url -p plan-name -c configuration
+
+   parser = optparse.OptionParser()
+   parser.add_option("-v", "--verbose", action="store_true")
+   parser.add_option("-a", "--api", default="http://127.0.0.1:8282")
+   parser.add_option("-p", "--plan-name")
+   parser.add_option("-c", "--configuration")
+
+   (options, args) = parser.parse_args()
+
+   task_engine_url = options.api
+   plan_name = options.plan_name
+   configuration = options.configuration
+
+   r = requests.put(task_engine_url + "/scan/create/" + plan_name, data=configuration)
+   r.raise_for_status()
+   #print "CREATE RESPONSE", r.text
+   create_response = r.json
+
+   if create_response['success']:
+
+      url = task_engine_url + "/scan/" + create_response['scan']['id'] + "/state"
+      r = requests.post(url, 'START')
+      r.raise_for_status()
+      start_response = r.json
+
+      if start_response['success']:
+
+         while True:
+
+            url = task_engine_url + "/scan/" + create_response['scan']['id']
+            r = requests.get(url)
+            r.raise_for_status()
+            scan_response = r.json
+
+            for session in scan_response['scan']['sessions']:
+               print "%s %-20s %s" % (session['id'], session['plugin']['name'], session['state'])
+               
+            all_done = True
+            for session in scan_response['scan']['sessions']:
+               if session['state'] not in ('FINISHED', 'STOPPED', 'ABORTED'):
+                  all_done = False
+                  break
+
+            if all_done:
+               break
+
+            print
+            time.sleep(1.0)
+
+      # Print the results
+
+      print "RESULTS:\n"
+
+      url = task_engine_url + "/scan/" + create_response['scan']['id'] + "/results"
+      r = requests.get(url)
+      r.raise_for_status()
+      results_response = r.json
+
+      for session in results_response['scan']['sessions']:
+         for issue in session['issues']:
+            print "%s %s %-12s %s" % (issue['Date'], issue['Id'], issue['Severity'], issue['Summary'])

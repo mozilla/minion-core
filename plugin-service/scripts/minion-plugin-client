@@ -1,0 +1,90 @@
+#!/usr/bin/env python
+
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+import curses
+import json
+import optparse
+import sys
+import time
+
+import requests
+
+def clear_screen():
+    curses.setupterm()
+    sys.stdout.write(curses.tigetstr("clear"))
+    sys.stdout.flush()
+
+if __name__ == "__main__":
+
+    parser = optparse.OptionParser()
+    parser.add_option("-v", "--verbose", action="store_true")
+    parser.add_option("-a", "--api", default="http://127.0.0.1:8181")
+    parser.add_option("-p", "--plugin")
+    parser.add_option("-c", "--configuration")
+
+    (options, args) = parser.parse_args()
+
+    session = None
+
+    # Create the plugin session
+
+    r = requests.put("%s/session/create/%s" % (options.api,options.plugin), data=options.configuration)
+    r.raise_for_status()
+    create_response = r.json
+    if not create_response['success']:
+        print "Failed to create session: %s" % create_response['error']
+        sys.exit(1)
+
+    session = create_response['session']
+
+    # Start the plugin session
+
+    r = requests.put("%s/session/%s/state" % (options.api,session['id']), data="START")
+    r.raise_for_status()
+    start_response = r.json
+    if not start_response['success']:
+        print "Failed to start session: %s" % start_response['error']
+        sys.exit(1)
+
+    # Loop until they are all finished
+
+    moo = False
+    while True:
+
+        r = requests.get("%s/session/%s" % (options.api,session['id']))
+        r.raise_for_status()
+        session_response = r.json
+        session_info = r.json['session']
+        
+        if moo:
+            print ""
+
+        print "Plugin session status:\n"
+        
+        print "%-12s: %s" % ("session", session_info['id'])
+        print "%-12s: %s" % ("plugin", session_info['plugin']['name'])
+        print "%-12s: %s" % ("state", session_info['state'])
+        print "%-12s: %s" % ("duration", time.strftime('%H:%M:%S', time.gmtime(session_info['duration'])))
+        if session_info['progress']:
+            print "%-12s: %s%% (%s)" % ("progress", session_info['progress']['percentage'], session_info['progress']['description'])
+
+        if session_info['state'] in ('FINISHED', 'FAILED', 'ABORTED'):
+            break
+        
+        moo = True
+        time.sleep(1)
+
+    if session_info['state'] == 'FINISHED':
+
+        r = requests.get("%s/session/%s/results" % (options.api,session['id']))
+        r.raise_for_status()
+        results_response = r.json
+
+        print "\nPlugin session results:\n"
+        print json.dumps(results_response['issues'], sort_keys=True, indent=4)
+        
+        print "\nPlugin session artifacts:\n"
+        print json.dumps(results_response['session']['artifacts'], sort_keys=True, indent=4)
