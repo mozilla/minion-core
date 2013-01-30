@@ -225,27 +225,15 @@ class PluginServiceApplication(cyclone.web.Application):
 
         self.plugin_service = PluginService(plugin_service_settings['work_directory_root'])
 
-        from minion.plugins.basic import ExceptionPlugin
-        from minion.plugins.basic import FailedPlugin
-        from minion.plugins.basic import HSTSPlugin
-        from minion.plugins.basic import IncrementalAsyncPlugin
-        from minion.plugins.basic import IncrementalBlockingPlugin
-        from minion.plugins.basic import IssueGeneratingPlugin
-        from minion.plugins.basic import LongRunningPlugin
-        from minion.plugins.basic import XFrameOptionsPlugin
-        from minion.plugins.basic import ReportGeneratingPlugin
-        from minion.plugins.basic import SimpleExternalPlugin
+        # These are the only (test) plugins that we include
 
-        self.plugin_service.register_plugin(ExceptionPlugin)
-        self.plugin_service.register_plugin(FailedPlugin)
+        from minion.plugins.basic import HSTSPlugin
+        from minion.plugins.basic import XFrameOptionsPlugin
+
         self.plugin_service.register_plugin(HSTSPlugin)
-        self.plugin_service.register_plugin(IncrementalAsyncPlugin)
-        self.plugin_service.register_plugin(IncrementalBlockingPlugin)
-        self.plugin_service.register_plugin(IssueGeneratingPlugin)
-        self.plugin_service.register_plugin(LongRunningPlugin)
         self.plugin_service.register_plugin(XFrameOptionsPlugin)
-        self.plugin_service.register_plugin(ReportGeneratingPlugin)
-        self.plugin_service.register_plugin(SimpleExternalPlugin)
+
+        # The following plugins are optional
 
         try:
             from minion.plugins.nmap import NMAPPlugin
