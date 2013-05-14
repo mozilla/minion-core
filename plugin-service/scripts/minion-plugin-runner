@@ -32,7 +32,7 @@ import requests
 
 
 class EC2Callbacks:
-    
+
     """
     These callbacks communicate back to the plugin service through an SQS Queue.
     TODO Do not use requests but the async tornado or cyclone client instead
@@ -76,7 +76,7 @@ class EC2Callbacks:
     def configuration(self):
         logging.debug("SimpleCallbacks.configuration: " + str(self._configuration))
         return deferLater(reactor, 0, lambda: self._configuration)
-    
+
 
 class SimpleCallbacks:
 
@@ -86,7 +86,7 @@ class SimpleCallbacks:
     for debugging or running plugins from the command line for testing
     or developing.
     """
-    
+
     zope.interface.implements(IPluginRunnerCallbacks)
 
     def __init__(self, session_configuration):
@@ -140,7 +140,7 @@ class JSONResponseProtocol(Protocol):
     def __init__(self, finished):
         self.finished = finished
         self.data = ""
-        
+
     def dataReceived(self, data):
         self.data += data
 
@@ -189,8 +189,8 @@ class PluginServiceCallbacks:
                            { 'percentage': percentage, 'description': description })
 
     def report_progress(self, percentage, description = ""):
-        deferToThread(self._report_progress, percentage, description)        
-    
+        deferToThread(self._report_progress, percentage, description)
+
     def _report_issues(self, issues):
         issues = list(issues)
         logging.debug("PluginServiceCallbacks.report_issues: " + str(issues))
@@ -223,11 +223,11 @@ class PluginServiceCallbacks:
 
     def report_finish(self, exit_code = "FINISHED"):
         deferToThread(self._report_finish, exit_code=exit_code)
-    
+
     def configuration(self):
         logging.debug("PluginServiceCallbacks.configuration")
         return self._get("/session/%s/configuration" % self.plugin_session_id)
-    
+
 class PluginRunner:
 
     def __init__(self, reactor, callbacks, plugin_session_id, plugin_module_name, plugin_class_name, work_directory):
@@ -268,7 +268,7 @@ class PluginRunner:
             except Exception as e:
                 logging.exception("Failed to start plugin %s" % str(self.plugin))
                 self.callbacks.report_finish(exit_code = AbstractPlugin.EXIT_STATE_FAILED)
-        
+
         deferred = self.callbacks.configuration()
         deferred.addCallback(configurationCallback)
 
@@ -289,12 +289,13 @@ if __name__ == "__main__":
     parser = optparse.OptionParser()
     parser.add_option("-d", "--debug", action="store_true")
     parser.add_option("-c", "--configuration")
+    parser.add_option("-f", "--configuration-file")
     parser.add_option("-p", "--plugin")
     parser.add_option("-w", "--work-root", default="/tmp") # Where session directories are stored
     parser.add_option("--session-id")
     parser.add_option("--mode", default="standalone")
     parser.add_option("--plugin-service-api")
-    
+
     (options, args) = parser.parse_args()
 
     #
@@ -303,7 +304,7 @@ if __name__ == "__main__":
 
     plugin_name = None
     plugin_session_id = None
-    
+
     if options.mode == "ec2":
         # Get the configuration from the EC2 user-data
         r = requests.get("http://169.254.169.254/latest/user-data")
@@ -330,7 +331,15 @@ if __name__ == "__main__":
         # If running standalone, we generate a session id
         plugin_name = options.plugin
         plugin_session_id = str(uuid.uuid4())
-        callbacks = SimpleCallbacks(options.configuration)
+        if options.configuration:
+            configuration = option.configuration
+        elif options.configuration_file:
+            with open(options.configuration_file) as f:
+                configuration = f.read()
+        else:
+            logging.error("No plugin configuration given")
+            sys.exit(1)
+        callbacks = SimpleCallbacks(configuration)
 
     #
     # Setup the work directory
@@ -357,7 +366,7 @@ if __name__ == "__main__":
     plugin_class_name = parts[-1]
     plugin_session_id = None
 
-    level = logging.DEBUG if options.debug else logging.INFO    
+    level = logging.DEBUG if options.debug else logging.INFO
     logging.basicConfig(level=level, format='%(asctime)s %(levelname).1s %(message)s', datefmt='%y-%m-%d %H:%M:%S')
     logging.debug("Running %s/%s" % (plugin_module_name, plugin_class_name))
 
