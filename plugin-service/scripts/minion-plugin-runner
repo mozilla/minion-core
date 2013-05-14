@@ -332,7 +332,7 @@ if __name__ == "__main__":
         plugin_name = options.plugin
         plugin_session_id = str(uuid.uuid4())
         if options.configuration:
-            configuration = option.configuration
+            configuration = options.configuration
         elif options.configuration_file:
             with open(options.configuration_file) as f:
                 configuration = f.read()
