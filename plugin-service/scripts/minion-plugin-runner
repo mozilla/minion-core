@@ -292,7 +292,7 @@ if __name__ == "__main__":
     parser.add_option("-f", "--configuration-file")
     parser.add_option("-p", "--plugin")
     parser.add_option("-w", "--work-root", default="/tmp") # Where session directories are stored
-    parser.add_option("--session-id")
+    parser.add_option("-s", "--session-id")
     parser.add_option("--mode", default="standalone")
     parser.add_option("--plugin-service-api")
 
