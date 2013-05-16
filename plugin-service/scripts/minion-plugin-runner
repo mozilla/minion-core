@@ -30,6 +30,8 @@ from minion.plugin_api import AbstractPlugin, IPluginRunnerCallbacks, IPlugin
 
 import requests
 
+from celery import Celery
+from celery.execute import send_task
 
 class EC2Callbacks:
 
@@ -50,6 +52,9 @@ class EC2Callbacks:
         # TODO That replace() should not be in there. Why do we need that?
         r = requests.post(self._config['minion_results_queue_url'].replace("sqs.us-east-1", "queue"), data=payload)
         print r.text
+
+    def report_start(self):
+        pass
 
     def report_progress(self, percentage, description = ""):
         if description: description = " (" + description + ")"
@@ -78,6 +83,74 @@ class EC2Callbacks:
         return deferLater(reactor, 0, lambda: self._configuration)
 
 
+class CeleryCallbacks:
+
+    zope.interface.implements(IPluginRunnerCallbacks)
+
+    def __init__(self, configuration, session_id):
+        self._configuration = configuration
+        self._session_id = session_id
+        self._celery = Celery('tasks', broker='amqp://guest@127.0.0.1//')
+
+    def report_start(self):
+        pass
+
+    def report_progress(self, percentage, description = ""):
+        pass
+
+    def report_issues(self, issues):
+        for issue in issues:
+            send_task("collector.report_issue", args=[issue], kwargs={}, queue='collector')
+
+    def report_errors(self, errors):
+        for error in errors:
+            send_task("collector.report_error", args=[error], kwargs={}, queue='collector')
+
+    def report_artifacts(self, name, paths):
+        pass
+
+    def report_finish(self, exit_code = "FINISHED"):
+        logging.debug("CeleryCallbacks.report_finish exit_code=%s" % exit_code)
+        reactor.stop()
+
+    def configuration(self):
+        logging.debug("CeleryCallbacks.configuration: " + str(self._configuration))
+        return deferLater(reactor, 0, lambda: self._configuration)
+
+
+class JSONCallbacks:
+
+    zope.interface.implements(IPluginRunnerCallbacks)
+
+    def __init__(self, configuration, session_id):
+        self._configuration = configuration
+        self._session_id = session_id
+
+    def report_start(self):
+        print json.dumps({"msg": "start"})
+
+    def report_progress(self, percentage, description = ""):
+        pass
+
+    def report_issues(self, issues):
+        for issue in issues:
+            print json.dumps({"msg": "issue", "data": issue})
+
+    def report_errors(self, errors):
+        pass
+
+    def report_artifacts(self, name, paths):
+        pass
+
+    def report_finish(self, exit_code = "FINISHED"):
+        print json.dumps({"msg": "finish"})
+        reactor.stop()
+
+    def configuration(self):
+        logging.debug("CeleryCallbacks.configuration: " + str(self._configuration))
+        return deferLater(reactor, 0, lambda: self._configuration)
+
+
 class SimpleCallbacks:
 
     """
@@ -93,6 +166,9 @@ class SimpleCallbacks:
         self.session_configuration = session_configuration
         self.issues = []
         self.artifacts = {}
+
+    def report_start(self):
+        pass
 
     def report_progress(self, percentage, description = ""):
         if description: description = " (" + description + ")"
@@ -183,6 +259,13 @@ class PluginServiceCallbacks:
         d.addErrback(self._genericErrorBack)
         return d
 
+    def _report_start(self):
+        logging.debug("PluginServiceCallbacks.report_start")
+        self.semaphore.run(self._post_async, "/session/%s/report/start" % self.plugin_session_id, {})
+
+    def report_start(self):
+        deferToThread(self._report_start, exit_code=exit_code)
+
     def _report_progress(self, percentage, description = ""):
         logging.debug("PluginServiceCallbacks.report_progress reported progress: %d/%s" % (percentage, str(description)))
         self.semaphore.run(self._post_async, "/session/%s/report/progress" % self.plugin_session_id,
@@ -265,6 +348,7 @@ class PluginRunner:
                 self.callbacks.report_finish(exit_code = AbstractPlugin.EXIT_STATE_FAILED)
             try:
                 self.plugin.do_start()
+                self.callbacks.report_start()
             except Exception as e:
                 logging.exception("Failed to start plugin %s" % str(self.plugin))
                 self.callbacks.report_finish(exit_code = AbstractPlugin.EXIT_STATE_FAILED)
@@ -293,7 +377,7 @@ if __name__ == "__main__":
     parser.add_option("-p", "--plugin")
     parser.add_option("-w", "--work-root", default="/tmp") # Where session directories are stored
     parser.add_option("-s", "--session-id")
-    parser.add_option("--mode", default="standalone")
+    parser.add_option("-m", "--mode", default="standalone")
     parser.add_option("--plugin-service-api")
 
     (options, args) = parser.parse_args()
@@ -326,6 +410,33 @@ if __name__ == "__main__":
         plugin_name = options.plugin
         plugin_session_id = options.session_id
         callbacks = PluginServiceCallbacks(options.plugin_service_api, options.session_id)
+
+    if options.mode == "celery":
+        # When running from rabbitmq, we push results back into the queue
+        plugin_name = options.plugin
+        plugin_session_id = options.session_id
+        if options.configuration:
+            configuration = options.configuration
+        elif options.configuration_file:
+            with open(options.configuration_file) as f:
+                configuration = f.read()
+        else:
+            logging.error("No plugin configuration given")
+            sys.exit(1)
+        callbacks = CeleryCallbacks(configuration, plugin_session_id)
+
+    if options.mode == "json":
+        plugin_name = options.plugin
+        plugin_session_id = options.session_id
+        if options.configuration:
+            configuration = options.configuration
+        elif options.configuration_file:
+            with open(options.configuration_file) as f:
+                configuration = f.read()
+        else:
+            logging.error("No plugin configuration given")
+            sys.exit(1)
+        callbacks = JSONCallbacks(configuration, plugin_session_id)
 
     if options.mode == "standalone":
         # If running standalone, we generate a session id
