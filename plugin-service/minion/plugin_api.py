@@ -5,6 +5,7 @@
 import logging
 import os
 import sys
+import uuid
 
 from twisted.internet import reactor
 from twisted.internet.threads import deferToThread
@@ -37,7 +38,7 @@ class IPlugin(zope.interface.Interface):
     """
     All plugins should implement this. This is their API.
     """
-    
+
     # Plugin attributes, provided/configured by the PluginRunner.
 
     callbacks = zope.interface.Attribute("""The callbacks to send data back""")
@@ -78,7 +79,7 @@ class AbstractPlugin:
     EXIT_STATE_FINISHED = "FINISHED"
     EXIT_STATE_STOPPED  = "STOPPED"
     EXIT_STATE_FAILED   = "FAILED"
-    
+
     # Plugin methods. By default these do nothing.
 
     def do_configure(self):
@@ -89,13 +90,15 @@ class AbstractPlugin:
 
     def do_stop(self):
         pass
-    
+
     # These are simply mapped to the callbacks for convenience
 
     def report_progress(self, percentage, description):
         self.callbacks.report_progress(percentage, description)
 
     def report_issues(self, issues):
+        for issue in issues:
+            issue['Id'] = str(uuid.uuid4())
         self.callbacks.report_issues(issues)
 
     def report_errors(self, errors):
@@ -132,7 +135,8 @@ class BlockingPlugin(AbstractPlugin):
             self.report_finish(exit_code = AbstractPlugin.EXIT_STATE_FINISHED)
 
     def _finish_with_failure(self, failure):
-        logging.error("BlockingPlugin._finish_with_failure: " + str(failure))
+        #logging.error("BlockingPlugin._finish_with_failure: " + str(failure))
+        self.report_issues([{"Summary":str(failure.value), "Severity":"Error"}])
         self.report_finish(exit_code = AbstractPlugin.EXIT_STATE_FAILED)
 
     def do_start(self):
@@ -143,7 +147,7 @@ class BlockingPlugin(AbstractPlugin):
 
     def do_stop(self):
         self.stopped = True
-        
+
 
 class ExternalProcessProtocol(ProcessProtocol):
 
@@ -162,7 +166,7 @@ class ExternalProcessProtocol(ProcessProtocol):
         except Exception as e:
             logging.exception("Plugin threw an uncaught exception in do_process_stdout: " + str(e))
             self.plugin.report_finish(exit_code = AbstractPlugin.EXIT_STATE_FAILED)
-        
+
     def errReceived(self, data):
         try:
             self.plugin.do_process_stderr(data)
@@ -186,13 +190,13 @@ class ExternalProcessProtocol(ProcessProtocol):
                 self.plugin.report_finish(exit_code = AbstractPlugin.EXIT_STATE_FAILED)
 
 class ExternalProcessPlugin(AbstractPlugin):
-    
+
     """
     Plugin that spawns an external tool. This makes it simple to execute tools like
     nmap.
 
     The default behaviour of do_stop() is to simply kill the external tool. When the
-    tool is killed and exits, 
+    tool is killed and exits,
     """
 
     def __init__(self):
