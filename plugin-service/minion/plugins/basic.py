@@ -14,7 +14,7 @@ from minion.plugin_api import AbstractPlugin,BlockingPlugin,ExternalProcessPlugi
 
 
 class XFrameOptionsPlugin(BlockingPlugin):
-    
+
     """
     This is a minimal plugin that does one http request to find out if
     the X-Frame-Options header has been set. It does not override anything
@@ -25,19 +25,17 @@ class XFrameOptionsPlugin(BlockingPlugin):
     HTTP request. The PluginRunner catches exceptions thrown by start() and
     will report that back as an error state of the plugin.
     """
-    
-    def do_run(self):        
-        r = requests.get(self.configuration['target'])
-        if r.status_code != 200:
-            self.report_error([{"Info":"Received a non-200 response: %d" % r.status_code}])
-        else:
-            if 'x-frame-origin' in r.headers:
-                if r.headers['x-frame-options'] not in ('DENY', 'SAMEORIGIN'):
-                    self.report_issues([{ "Summary":"Site has X-Frame-Options header but it has an unknown or invalid value: %s" % r.headers['x-frame-options'],"Severity":"High" }])
-                else:
-                    self.report_issues([{ "Summary":"Site has a correct X-Frame-Options header", "Severity":"Info" }])
+
+    def do_run(self):
+        r = requests.get(self.configuration['target'], timeout=5.0)
+        r.raise_for_status()
+        if 'x-frame-options' in r.headers:
+            if r.headers['x-frame-options'].upper() not in ('DENY', 'SAMEORIGIN'):
+                self.report_issues([{ "Summary":"Site has X-Frame-Options header but it has an unknown or invalid value: %s" % r.headers['x-frame-options'],"Severity":"High" }])
             else:
-                self.report_issues([{"Summary":"Site has no X-Frame-Options header set", "Severity":"High"}])
+                self.report_issues([{ "Summary":"Site has a correct X-Frame-Options header", "Severity":"Info" }])
+        else:
+            self.report_issues([{"Summary":"Site has no X-Frame-Options header set", "Severity":"High"}])
 
 
 class HSTSPlugin(BlockingPlugin):
@@ -47,12 +45,63 @@ class HSTSPlugin(BlockingPlugin):
     """
 
     def do_run(self):
-        r = requests.get(self.configuration['target'])
-        if r.status_code != 200:
-            self.report_issues([{ "Summary":"Received a non-200 response: %d" % r.status_code, "Severity":"Info" }])
-        else:            
-            if r.url.startswith("https://") and 'hsts' not in r.headers:
-                self.report_issues([{ "Summary":"Site does not set HSTS header", "Severity":"High" }])
+        r = requests.get(self.configuration['target'], timeout=5.0)
+        r.raise_for_status()
+        if r.url.startswith("https://"):
+            if 'strict-transport-security' not in r.headers:
+                self.report_issues([{ "Summary":"Site does not set Strict-Transport-Security header", "Severity":"High" }])
             else:
-                self.report_issues([{ "Summary":"Site sets HSTS header", "Severity":"Info" }])
+                self.report_issues([{ "Summary":"Site sets Strict-Transport-Security header", "Severity":"Info" }])
 
+
+class XContentTypeOptionsPlugin(BlockingPlugin):
+
+    """
+    This plugin checks if the site sends out a X-Content-Type-Options header
+    """
+
+    def do_run(self):
+        r = requests.get(self.configuration['target'], timeout=5.0)
+        r.raise_for_status()
+        if 'X-Content-Type-Options' not in r.headers:
+            self.report_issues([{ "Summary":"Site does not set X-Content-Type-Options header", "Severity":"High" }])
+        else:
+            if r.headers['X-Content-Type-Options'] == 'nosniff':
+                self.report_issues([{ "Summary":"Site sets X-Content-Type-Options header", "Severity":"Info" }])
+            else:
+                self.report_issues([{ "Summary":"Site sets an invalid X-Content-Type-Options header", "Severity":"High" }])
+
+
+class XXSSProtectionPlugin(BlockingPlugin):
+
+    """
+    This plugin checks if the site sends out a X-XSS-Protection header
+    """
+
+    def do_run(self):
+        r = requests.get(self.configuration['target'], timeout=5.0)
+        r.raise_for_status()
+        if 'X-XSS-Protection' not in r.headers:
+            self.report_issues([{ "Summary":"Site does not set X-XSS-Protection header", "Severity":"High" }])
+        else:
+            if r.headers['X-XSS-Protection'] == '1; mode=block':
+                self.report_issues([{ "Summary":"Site sets X-XSS-Protection header", "Severity":"Info" }])
+            elif r.headers['X-XSS-Protection'] == '0':
+                self.report_issues([{ "Summary":"Site sets X-XSS-Protection header to disable the XSS filter", "Severity":"High" }])
+            else:
+                self.report_issues([{ "Summary":"Site sets an invalid X-XSS-Protection header: %s" % r.headers['X-XSS-Protection'], "Severity":"High" }])
+
+
+class ServerDetailsPlugin(BlockingPlugin):
+
+    """
+    This plugin checks if the site sends out a Server or X-Powered-By header that exposes details about the server software.
+    """
+
+    def do_run(self):
+        r = requests.get(self.configuration['target'], timeout=5.0)
+        r.raise_for_status()
+        HEADERS = ('Server', 'X-Powered-By', 'X-AspNet-Version', 'X-AspNetMvc-Version')
+        for header in HEADERS:
+            if header in r.headers:
+                self.report_issues([{ "Summary":"Site sets the '%s' header" % header, "Severity":"Medium" }])
